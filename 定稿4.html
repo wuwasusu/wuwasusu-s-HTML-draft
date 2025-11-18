@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>传感器监测与控制系统</title>
+    <!-- 引入依赖 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 全局样式 -->
+    <style>
+        .container { min-height: calc(100vh - 60px); }
+        .nav-link.active { @apply bg-blue-600 text-white; }
+        .table-container { @apply overflow-x-auto; }
+        .loading { @apply absolute inset-0 bg-white/80 flex items-center justify-center z-50; }
+        .alarm { @apply text-red-600 font-bold; }
+        .online { @apply text-green-600; }
+        .offline { @apply text-red-600; }
+        .highlight { @apply bg-red-50; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- 顶部导航 -->
+    <nav class="bg-blue-700 text-white h-16 flex items-center px-6 shadow-md">
+        <div class="flex items-center space-x-2">
+            <i class="fa fa-cogs text-2xl"></i>
+            <h1 class="text-xl font-bold">传感器监测与控制系统</h1>
+        </div>
+    </nav>
+
+    <!-- 主容器 -->
+    <div class="container flex">
+        <!-- 侧边栏 -->
+        <aside class="w-64 bg-white shadow-lg h-full py-4">
+            <div class="nav-links flex flex-col px-2">
+                <a href="#realtime" class="nav-link py-3 px-4 rounded mb-2 hover:bg-blue-50 transition flex items-center" data-page="realtime">
+                    <i class="fa fa-line-chart mr-3"></i> 实时数据监测
+                </a>
+                <a href="#history" class="nav-link py-3 px-4 rounded mb-2 hover:bg-blue-50 transition flex items-center" data-page="history">
+                    <i class="fa fa-history mr-3"></i> 历史数据查询
+                </a>
+                <a href="#sensorStatus" class="nav-link py-3 px-4 rounded mb-2 hover:bg-blue-50 transition flex items-center" data-page="sensorStatus">
+                    <i class="fa fa-tasks mr-3"></i> 传感器状态监控
+                </a>
+                <a href="#control" class="nav-link py-3 px-4 rounded mb-2 hover:bg-blue-50 transition flex items-center" data-page="control">
+                    <i class="fa fa-sliders mr-3"></i> 远程控制
+                </a>
+                <a href="#logs" class="nav-link py-3 px-4 rounded mb-2 hover:bg-blue-50 transition flex items-center" data-page="logs">
+                    <i class="fa fa-file-text mr-3"></i> 系统日志
+                </a>
+            </div>
+        </aside>
+
+        <!-- 内容区域 -->
+        <main class="flex-1 p-6">
+            <!-- 加载动画 -->
+            <div class="loading hidden" id="loading">
+                <div class="flex flex-col items-center">
+                    <i class="fa fa-spinner fa-spin text-4xl text-blue-600 mb-3"></i>
+                    <p class="text-lg text-gray-700">处理中...</p>
+                </div>
+            </div>
+
+            <!-- 实时数据监测页面 -->
+            <section id="realtimePage" class="page-content">
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h2 class="text-xl font-bold mb-4 text-gray-800 flex items-center">
+                        <i class="fa fa-line-chart mr-2 text-blue-600"></i> 实时数据监测
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="border rounded-lg p-4 bg-blue-50">
+                            <h3 class="text-gray-600 text-sm mb-1">传感器ID</h3>
+                            <p id="realtimeSensorId" class="text-xl font-bold">-</p>
+                        </div>
+                        <div class="border rounded-lg p-4 bg-blue-50">
+                            <h3 class="text-gray-600 text-sm mb-1">当前厚度</h3>
+                            <p id="realtimeThickness" class="text-xl font-bold">- mm</p>
+                        </div>
+                        <div class="border rounded-lg p-4 bg-blue-50">
+                            <h3 class="text-gray-600 text-sm mb-1">采集时间</h3>
+                            <p id="realtimeTime" class="text-xl font-bold">-</p>
+                        </div>
+                        <div class="border rounded-lg p-4 bg-blue-50">
+                            <h3 class="text-gray-600 text-sm mb-1">状态</h3>
+                            <p id="realtimeAlarm" class="text-xl font-bold">-</p>
+                        </div>
+                    </div>
+                    <div class="text-sm text-gray-500 text-center">
+                        <i class="fa fa-refresh fa-spin mr-1"></i> 每3秒自动刷新
+                    </div>
+                </div>
+            </section>
+
+            <!-- 历史数据查询页面 -->
+            <section id="historyPage" class="page-content hidden">
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h2 class="text-xl font-bold mb-4 text-gray-800 flex items-center">
+                        <i class="fa fa-history mr-2 text-blue-600"></i> 历史数据查询
+                    </h2>
+                    <div class="flex flex-col md:flex-row gap-4 mb-6">
+                        <div class="flex-1">
+                            <label class="block text-gray-700 mb-1" for="startTime">开始时间</label>
+                            <input type="datetime-local" id="startTime" class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-gray-700 mb-1" for="endTime">结束时间</label>
+                            <input type="datetime-local" id="endTime" class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-gray-700 mb-1" for="historySensorId">传感器ID</label>
+                            <input type="text" id="historySensorId" class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="可选">
+                        </div>
+                        <div class="flex items-end">
+                            <button id="queryHistoryBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition mr-2">
+                                <i class="fa fa-search mr-1"></i> 查询
+                            </button>
+                            <button id="exportExcelBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition">
+                                <i class="fa fa-download mr-1"></i> 导出Excel
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 图表区域 -->
+                    <div class="mb-6 h-80">
+                        <h3 class="text-lg font-semibold mb-2">厚度趋势图</h3>
+                        <div id="historyChart" class="w-full h-full border rounded-lg p-2"></div>
+                    </div>
+
+                    <!-- 数据表格 -->
+                    <div class="table-container">
+                        <table class="min-w-full border-collapse">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th class="border p-3 text-left">采集时间</th>
+                                    <th class="border p-3 text-left">传感器ID</th>
+                                    <th class="border p-3 text-left">厚度(mm)</th>
+                                    <th class="border p-3 text-left">是否报警</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <tr>
+                                    <td colspan="4" class="border p-4 text-center text-gray-500">请选择时间范围并点击查询</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 传感器状态监控页面 -->
+            <section id="sensorStatusPage" class="page-content hidden">
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h2 class="text-xl font-bold mb-4 text-gray-800 flex items-center">
+                        <i class="fa fa-tasks mr-2 text-blue-600"></i> 传感器状态监控
+                    </h2>
+                    <div class="text-sm text-gray-500 mb-4">
+                        <i class="fa fa-refresh fa-spin mr-1"></i> 每30秒自动刷新
+                    </div>
+                    <div class="table-container">
+                        <table class="min-w-full border-collapse">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th class="border p-3 text-left">传感器ID</th>
+                                    <th class="border p-3 text-left">在线状态</th>
+                                    <th class="border p-3 text-left">最后心跳时间</th>
+                                    <th class="border p-3 text-left">采样频率</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sensorStatusTableBody">
+                                <tr>
+                                    <td colspan="4" class="border p-4 text-center text-gray-500">加载中...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 远程控制页面 -->
+            <section id="controlPage" class="page-content hidden">
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h2 class="text-xl font-bold mb-4 text-gray-800 flex items-center">
+                        <i class="fa fa-sliders mr-2 text-blue-600"></i> 远程控制
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- 报警控制 -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="text-lg font-semibold mb-3">报警设备控制</h3>
+                            <div class="mb-3">
+                                <label class="block text-gray-700 mb-1" for="controlSensorId">传感器ID</label>
+                                <input type="text" id="controlSensorId" class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                            </div>
+                            <div class="flex gap-3">
+                                <button id="startAlarmBtn" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition">
+                                    <i class="fa fa-bell mr-1"></i> 启动报警
+                                </button>
+                                <button id="stopAlarmBtn" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition">
+                                    <i class="fa fa-bell-slash mr-1"></i> 停止报警
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 采样频率配置 -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="text-lg font-semibold mb-3">采样频率配置</h3>
+                            <div class="mb-3">
+                                <label class="block text-gray-700 mb-1" for="freqSensorId">传感器ID</label>
+                                <input type="text" id="freqSensorId" class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="block text-gray-700 mb-1" for="sampleFreq">采样频率</label>
+                                <select id="sampleFreq" class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="5">5Hz</option>
+                                    <option value="10">10Hz</option>
+                                </select>
+                            </div>
+                            <button id="setFreqBtn" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition">
+                                <i class="fa fa-save mr-1"></i> 保存配置
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 系统日志页面 -->
+            <section id="logsPage" class="page-content hidden">
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h2 class="text-xl font-bold mb-4 text-gray-800 flex items-center">
+                        <i class="fa fa-file-text mr-2 text-blue-600"></i> 系统日志
+                    </h2>
+                    <div class="flex flex-col md:flex-row gap-4 mb-6">
+                        <div class="flex-1">
+                            <label class="block text-gray-700 mb-1" for="logStartTime">开始时间</label>
+                            <input type="datetime-local" id="logStartTime" class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-gray-700 mb-1" for="logEndTime">结束时间</label>
+                            <input type="datetime-local" id="logEndTime" class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div class="flex items-end">
+                            <button id="queryLogsBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition">
+                                <i class="fa fa-search mr-1"></i> 查询
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="min-w-full border-collapse">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th class="border p-3 text-left">日志时间</th>
+                                    <th class="border p-3 text-left">操作类型</th>
+                                    <th class="border p-3 text-left">操作员</th>
+                                    <th class="border p-3 text-left">操作结果</th>
+                                    <th class="border p-3 text-left">备注</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logsTableBody">
+                                <tr>
+                                    <td colspan="5" class="border p-4 text-center text-gray-500">请选择时间范围并点击查询</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-sm text-gray-500 mt-4 text-center">
+                        <i class="fa fa-refresh fa-spin mr-1"></i> 每1分钟自动刷新
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 弹窗组件 -->
+    <div id="modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="modalTitle" class="text-xl font-bold text-gray-800">提示</h3>
+                <button id="closeModal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <div id="modalContent" class="mb-6">
+                弹窗内容
+            </div>
+            <div class="flex justify-end">
+                <button id="modalConfirmBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition">
+                    确认
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 脚本逻辑 -->
+    <script>
+        // 全局配置
+        const config = {
+            baseUrl: 'http://你的服务器IP:5000',
+            pollInterval: 3000, // 实时数据轮询间隔(ms)
+            sensorStatusInterval: 30000, // 传感器状态刷新间隔(ms)
+            logInterval: 60000, // 日志刷新间隔(ms)
+            alarmThreshold: 10.0, // 报警阈值(mm)
+            requestTimeout: 10000, // 请求超时时间(ms)
+            maxFailCount: 3 // 最大失败次数限制
+        };
+
+        // 全局状态
+        let realtimePoll = null;
+        let sensorStatusPoll = null;
+        let logPoll = null;
+        let historyChart = null;
+        let realtimeFailCount = 0; // 实时数据请求失败计数器
+        let sensorStatusFailCount = 0; // 传感器状态请求失败计数器
+        let logFailCount = 0; // 日志请求失败计数器
+
+        // DOM元素
+        const elements = {
+            loading: document.getElementById('loading'),
+            navLinks: document.querySelectorAll('.nav-link'),
+            pageContents: document.querySelectorAll('.page-content'),
+            modal: document.getElementById('modal'),
+            modalTitle: document.getElementById('modalTitle'),
+            modalContent: document.getElementById('modalContent'),
+            closeModal: document.getElementById('closeModal'),
+            modalConfirmBtn: document.getElementById('modalConfirmBtn'),
+            
+            // 实时数据
+            realtimeSensorId: document.getElementById('realtimeSensorId'),
+            realtimeThickness: document.getElementById('realtimeThickness'),
+            realtimeTime: document.getElementById('realtimeTime'),
+            realtimeAlarm: document.getElementById('realtimeAlarm'),
+            
+            // 历史数据
+            startTime: document.getElementById('startTime'),
+            endTime: document.getElementById('endTime'),
+            historySensorId: document.getElementById('historySensorId'),
+            queryHistoryBtn: document.getElementById('queryHistoryBtn'),
+            exportExcelBtn: document.getElementById('exportExcelBtn'),
+            historyTableBody: document.getElementById('historyTableBody'),
+            historyChart: document.getElementById('historyChart'),
+            
+            // 传感器状态
+            sensorStatusTableBody: document.getElementById('sensorStatusTableBody'),
+            
+            // 远程控制
+            controlSensorId: document.getElementById('controlSensorId'),
+            startAlarmBtn: document.getElementById('startAlarmBtn'),
+            stopAlarmBtn: document.getElementById('stopAlarmBtn'),
+            freqSensorId: document.getElementById('freqSensorId'),
+            sampleFreq: document.getElementById('sampleFreq'),
+            setFreqBtn: document.getElementById('setFreqBtn'),
+            
+            // 系统日志
+            logStartTime: document.getElementById('logStartTime'),
+            logEndTime: document.getElementById('logEndTime'),
+            queryLogsBtn: document.getElementById('queryLogsBtn'),
+            logsTableBody: document.getElementById('logsTableBody')
+        };
+
+        // 初始化页面
+        function init() {
+            // 初始化图表
+            initChart();
+            // 绑定事件
+            bindEvents();
+            // 设置默认时间
+            setDefaultDateTime();
+            // 激活默认页面（实时数据监测）
+            switchPage('realtime');
+            // 启动轮询
+            startPolling();
+        }
+
+        // 切换页面
+        function switchPage(pageName) {
+            // 更新导航激活状态
+            elements.navLinks.forEach(link => {
+                if (link.dataset.page === pageName) {
+                    link.classList.add('active');
+                } else {
+                    link.classList.remove('active');
+                }
+            });
+            
+            // 更新内容区域
+            elements.pageContents.forEach(page => {
+                if (page.id === `${pageName}Page`) {
+                    page.classList.remove('hidden');
+                } else {
+                    page.classList.add('hidden');
+                }
+            });
+        }
+
+        // 初始化图表
+        function initChart() {
+            historyChart = echarts.init(elements.historyChart);
+            const option = {
+                title: { text: '' },
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: '{b}<br/>厚度: {c}mm'
+                },
+                legend: { data: ['厚度'] },
+                grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                xAxis: {
+                    type: 'category',
+                    boundaryGap: false,
+                    data: []
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLabel: { formatter: '{value} mm' },
+                    splitLine: { show: true },
+                    axisLine: { show: true },
+                    min: 0
+                },
+                series: [
+                    {
+                        name: '厚度',
+                        type: 'line',
+                        data: [],
+                        markLine: {
+                            data: [
+                                { 
+                                    name: '报警阈值', 
+                                    yAxis: config.alarmThreshold,
+                                    lineStyle: { color: 'red', type: 'solid' },
+                                    label: { formatter: '报警阈值(10.0mm)', position: 'end' }
+                                }
+                            ]
+                        },
+                        itemStyle: {
+                            color: function(params) {
+                                return params.value > config.alarmThreshold ? 'red' : 'blue';
+                            }
+                        }
+                    }
+                ]
+            };
+            historyChart.setOption(option);
+        }
+
+        // 设置默认时间
+        function setDefaultDateTime() {
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            // 格式化时间为YYYY-MM-DDTHH:MM
+            const formatDate = (date) => {
+                return date.toISOString().slice(0, 16);
+            };
+            
+            elements.startTime.value = formatDate(yesterday);
+            elements.endTime.value = formatDate(now);
+            elements.logStartTime.value = formatDate(yesterday);
+            elements.logEndTime.value = formatDate(now);
+        }
+
+        // 启动轮询
+        function startPolling() {
+            // 实时数据轮询
+            realtimePoll = setInterval(fetchRealtimeData, config.pollInterval);
+            // 传感器状态轮询
+            fetchSensorStatus();
+            sensorStatusPoll = setInterval(fetchSensorStatus, config.sensorStatusInterval);
+            // 日志轮询
+            fetchLogs();
+            logPoll = setInterval(fetchLogs, config.logInterval);
+        }
+
+        // 停止轮询
+        function stopPolling() {
+            if (realtimePoll) clearInterval(realtimePoll);
+            if (sensorStatusPoll) clearInterval(sensorStatusPoll);
+            if (logPoll) clearInterval(logPoll);
+        }
+
+        // 显示加载
+        function showLoading() {
+            elements.loading.classList.remove('hidden');
+        }
+
+        // 隐藏加载
+        function hideLoading() {
+            elements.loading.classList.add('hidden');
+        }
+
+        // 显示弹窗
+        function showModal(title, content, confirmCallback) {
+            elements.modalTitle.textContent = title;
+            elements.modalContent.textContent = content;
+            elements.modal.classList.remove('hidden');
+            
+            // 绑定确认回调
+            const handleConfirm = () => {
+                if (confirmCallback) confirmCallback();
+                hideModal();
+                elements.modalConfirmBtn.removeEventListener('click', handleConfirm);
+            };
+            
+            elements.modalConfirmBtn.addEventListener('click', handleConfirm);
+        }
+
+        // 隐藏弹窗
+        function hideModal() {
+            elements.modal.classList.add('hidden');
+        }
+
+        /**
+         * 接口请求封装（带完整错误拦截）
+         * @param {string} url - 请求路径
+         * @param {string} method - 请求方法
+         * @param {object} data - 请求数据
+         * @param {string} type - 请求类型（realtime/sensorStatus/log）
+         * @returns {Promise} - 处理后的响应数据
+         */
+        async function request(url, method = 'GET', data = {}, type) {
+            showLoading();
+            // 创建超时控制器
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => {
+                controller.abort(); // 超时取消请求
+            }, config.requestTimeout);
+
+            try {
+                // 拼接完整请求地址
+                const fullUrl = `${config.baseUrl}${url}`;
+                // 构建请求配置
+                const options = {
+                    method,
+                    signal: controller.signal, // 绑定超时控制
+                    credentials: 'include', // 携带Cookie
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                };
+
+                // 处理请求数据
+                if (method === 'POST') {
+                    options.body = JSON.stringify(data);
+                } else if (method === 'GET' && Object.keys(data).length > 0) {
+                    const params = new URLSearchParams(data);
+                    fullUrl += `?${params.toString()}`;
+                }
+
+                // 发送请求
+                const response = await fetch(fullUrl, options);
+
+                // 1. 处理HTTP状态码异常（4xx/5xx）
+                if (!response.ok) {
+                    // 404：请求路径不存在（请求配置层面）
+                    if (response.status === 404) {
+                        throw new Error(`请求路径不存在[404]，请检查接口地址是否正确：${url}`);
+                    }
+                    // 5xx：服务器内部错误（服务器层面）
+                    else if (response.status >= 500) {
+                        throw new Error(`服务器内部错误[${response.status}]，请联系后端排查服务故障`);
+                    }
+                    // 其他HTTP错误
+                    else {
+                        throw new Error(`请求失败[${response.status}]：${response.statusText}`);
+                    }
+                }
+
+                // 2. 处理响应格式异常
+                let result;
+                try {
+                    result = await response.json();
+                } catch (jsonError) {
+                    throw new Error('服务器返回格式错误，无法解析JSON数据（可能是服务器故障）');
+                }
+
+                // 3. 处理业务状态码异常
+                if (result.code !== 200) {
+                    throw new Error(`业务处理失败：${result.msg || '未知错误'}`);
+                }
+
+                // 请求成功，重置对应失败计数器
+                if (type === 'realtime') realtimeFailCount = 0;
+                else if (type === 'sensorStatus') sensorStatusFailCount = 0;
+                else if (type === 'log') logFailCount = 0;
+
+                return result.data;
+
+            } catch (error) {
+                // 分类处理不同类型错误
+                if (error.name === 'AbortError') {
+                    // 超时错误（服务器层面）
+                    showModal('请求超时', `请求超过${config.requestTimeout/1000}秒未响应，请检查服务器是否正常运行或网络是否稳定`, null);
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    // 网络连接错误（网络层面）
+                    showModal('网络异常', '请求发送失败，可能原因：1. 网络连接中断 2. DNS解析失败 3. 服务器不可达，请检查网络设置后重试', null);
+                } else if (error.message.includes('Access to fetch at') && error.message.includes('from origin') && error.message.includes('has been blocked by CORS policy')) {
+                    // CORS跨域错误（安全策略层面）
+                    showModal('跨域配置错误', '浏览器拦截了跨域请求，请联系后端配置正确的CORS规则（允许当前域名访问）', null);
+                } else if (error.message.includes('SSL') || error.message.includes('certificate')) {
+                    // HTTPS证书错误（安全策略层面）
+                    showModal('证书错误', 'HTTPS证书无效或过期，无法建立安全连接，请检查服务器证书配置', null);
+                } else {
+                    // 其他已知错误（直接提示）
+                    showModal('操作失败', error.message, null);
+                }
+
+                // 失败次数+1，达到上限则停止轮询
+                if (type === 'realtime') {
+                    realtimeFailCount++;
+                    if (realtimeFailCount >= config.maxFailCount) {
+                        clearInterval(realtimePoll);
+                        showModal('提示', `实时数据请求连续失败${config.maxFailCount}次，已停止自动刷新，请检查后手动刷新页面`, null);
+                    }
+                } else if (type === 'sensorStatus') {
+                    sensorStatusFailCount++;
+                    if (sensorStatusFailCount >= config.maxFailCount) {
+                        clearInterval(sensorStatusPoll);
+                        showModal('提示', `传感器状态请求连续失败${config.maxFailCount}次，已停止自动刷新，请检查后手动刷新页面`, null);
+                    }
+                } else if (type === 'log') {
+                    logFailCount++;
+                    if (logFailCount >= config.maxFailCount) {
+                        clearInterval(logPoll);
+                        showModal('提示', `系统日志请求连续失败${config.maxFailCount}次，已停止自动刷新，请检查后手动刷新页面`, null);
+                    }
+                }
+
+                // 终止错误传播
+                return Promise.reject(error);
+            } finally {
+                // 清除超时定时器+隐藏加载
+                clearTimeout(timeoutId);
+                hideLoading();
+            }
+        }
+
+        // 获取实时数据
+        async function fetchRealtimeData() {
+            try {
+                // 实际项目中应对接后端推送或专门的实时数据接口
+                const data = await request('/get_history', 'GET', { limit: 1 }, 'realtime');
+                if (data && data.length > 0) {
+                    const latest = data[0];
+                    elements.realtimeSensorId.textContent = latest.sensor_id;
+                    elements.realtimeThickness.textContent = latest.thickness.toFixed(2);
+                    elements.realtimeTime.textContent = formatDateTime(latest.collect_time);
+                    
+                    const isAlarm = latest.thickness > config.alarmThreshold;
+                    elements.realtimeAlarm.textContent = isAlarm ? '报警' : '正常';
+                    elements.realtimeAlarm.className = isAlarm ? 'text-xl font-bold alarm' : 'text-xl font-bold text-green-600';
+                }
+            } catch (error) {
+                // 已在request函数中处理错误，此处仅记录日志
+                console.error('获取实时数据失败:', error);
+            }
+        }
+
+        // 获取历史数据
+        async function fetchHistoryData() {
+            try {
+                const params = {
+                    start_time: elements.startTime.value,
+                    end_time: elements.endTime.value
+                };
+                
+                if (elements.historySensorId.value) {
+                    params.sensor_id = elements.historySensorId.value;
+                }
+                
+                const data = await request('/get_history', 'GET', params);
+                updateHistoryTable(data);
+                
+                // 获取图表数据
+                const chartData = await request('/get_history_chart_data', 'GET', params);
+                updateHistoryChart(chartData);
+            } catch (error) {
+                // 已在request函数中处理错误，此处仅记录日志
+                console.error('获取历史数据失败:', error);
+            }
+        }
+
+        // 更新历史数据表格
+        function updateHistoryTable(data) {
+            if (!data || data.length === 0) {
+                elements.historyTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="border p-4 text-center text-gray-500">暂无数据</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            let html = '';
+            data.forEach(item => {
+                const isAlarm = item.thickness > config.alarmThreshold;
+                html += `
+                    <tr ${isAlarm ? 'class="highlight"' : ''}>
+                        <td class="border p-3">${formatDateTime(item.collect_time)}</td>
+                        <td class="border p-3">${item.sensor_id}</td>
+                        <td class="border p-3">${item.thickness.toFixed(2)}</td>
+                        <td class="border p-3 ${isAlarm ? 'alarm' : 'text-green-600'}">
+                            ${isAlarm ? '是' : '否'}
+                        </td>
+                    </tr>
+                `;
+            });
+            elements.historyTableBody.innerHTML = html;
+        }
+
+        // 更新历史图表
+        function updateHistoryChart(chartData) {
+            if (!chartData || !chartData.times || !chartData.thicknesses) {
+                return;
+            }
+            
+            const option = historyChart.getOption();
+            option.xAxis[0].data = chartData.times.map(time => formatDateTime(time));
+            option.series[0].data = chartData.thicknesses;
+            historyChart.setOption(option);
+        }
+
+        // 导出Excel
+        async function exportExcel() {
+            try {
+                const params = {
+                    start_time: elements.startTime.value,
+                    end_time: elements.endTime.value
+                };
+                
+                if (elements.historySensorId.value) {
+                    params.sensor_id = elements.historySensorId.value;
+                }
+                
+                // 构建导出URL
+                const queryParams = new URLSearchParams(params);
+                const exportUrl = `${config.baseUrl}/export_oil_data_excel?${queryParams.toString()}`;
+                
+                // 创建下载链接
+                const link = document.createElement('a');
+                link.href = exportUrl;
+                
+                // 生成文件名
+                const startDate = formatDateForFileName(elements.startTime.value);
+                const endDate = formatDateForFileName(elements.endTime.value);
+                link.download = `油污数据_${startDate}-${endDate}.xlsx`;
+                
+                // 触发下载（单独处理下载错误）
+                link.addEventListener('error', (e) => {
+                    showModal('导出失败', '文件下载请求发送失败，请检查网络连接或服务器状态', null);
+                });
+                
+                // 触发下载
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                showModal('成功', '导出成功！', null);
+            } catch (error) {
+                // 处理导出过程中的其他错误
+                showModal('导出失败', error.message || '文件导出过程中发生未知错误', null);
+                console.error('导出Excel失败:', error);
+            }
+        }
+
+        // 获取传感器状态
+        async function fetchSensorStatus() {
+            try {
+                const data = await request('/get_sensor_status', 'GET', {}, 'sensorStatus');
+                updateSensorStatusTable(data);
+            } catch (error) {
+                // 已在request函数中处理错误，此处仅记录日志
+                console.error('获取传感器状态失败:', error);
+            }
+        }
+
+        // 更新传感器状态表格
+        function updateSensorStatusTable(data) {
+            if (!data || data.length === 0) {
+                elements.sensorStatusTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="border p-4 text-center text-gray-500">暂无传感器数据</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            let html = '';
+            data.forEach(item => {
+                const isOnline = item.online_status === 'online';
+                html += `
+                    <tr ${!isOnline ? 'class="highlight"' : ''}>
+                        <td class="border p-3">${item.sensor_id}</td>
+                        <td class="border p-3 ${isOnline ? 'online' : 'offline'}">
+                            ${isOnline ? '<i class="fa fa-check-circle"></i> 在线' : '<i class="fa fa-times-circle"></i> 离线'}
+                        </td>
+                        <td class="border p-3">${formatDateTime(item.last_heartbeat)}</td>
+                        <td class="border p-3">${item.sample_freq}Hz</td>
+                    </tr>
+                `;
+            });
+            elements.sensorStatusTableBody.innerHTML = html;
+        }
+
+        // 控制报警
+        async function controlAlarm(sensorId, cmd) {
+            try {
+                if (!sensorId) {
+                    throw new Error('请输入传感器ID');
+                }
+                
+                await request('/control_alarm', 'POST', {
+                    sensor_id: sensorId,
+                    cmd: cmd
+                });
+                
+                showModal('成功', `报警${cmd === 'start' ? '启动' : '停止'}成功！`, null);
+            } catch (error) {
+                // 已在request函数中处理错误，此处仅记录日志
+                console.error(`控制报警(${cmd})失败:', error`);
+            }
+        }
+
+        // 设置采样频率
+        async function setSensorFreq(sensorId, freq) {
+            try {
+                if (!sensorId) {
+                    throw new Error('请输入传感器ID');
+                }
+                
+                await request('/set_sensor_freq', 'POST', {
+                    sensor_id: sensorId,
+                    sample_freq: parseInt(freq)
+                });
+                
+                showModal('成功', '采样频率配置成功！', null);
+                // 刷新传感器状态
+                fetchSensorStatus();
+            } catch (error) {
+                // 已在request函数中处理错误，此处仅记录日志
+                console.error('设置采样频率失败:', error);
+            }
+        }
+
+        // 获取系统日志
+        async function fetchLogs() {
+            try {
+                const params = {
+                    start_time: elements.logStartTime.value,
+                    end_time: elements.logEndTime.value
+                };
+                
+                // 实际项目中应对接后端日志接口
+                const data = await request('/get_logs', 'GET', params, 'log').catch(() => {
+                    // 若接口未实现，返回模拟数据
+                    return [
+                        {
+                            log_time: new Date().toISOString(),
+                            operation_type: '系统初始化',
+                            operator: '系统',
+                            result: '成功',
+                            remark: '系统启动并加载日志'
+                        }
+                    ];
+                });
+                
+                updateLogsTable(data);
+            } catch (error) {
+                // 已在request函数中处理错误，此处仅记录日志
+                console.error('获取系统日志失败:', error);
+            }
+        }
+
+        // 更新日志表格
+        function updateLogsTable(data) {
+            if (!data || data.length === 0) {
+                elements.logsTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="border p-4 text-center text-gray-500">暂无日志数据</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            let html = '';
+            data.forEach(item => {
+                html += `
+                    <tr>
+                        <td class="border p-3">${formatDateTime(item.log_time)}</td>
+                        <td class="border p-3">${item.operation_type}</td>
+                        <td class="border p-3">${item.operator}</td>
+                        <td class="border p-3 ${item.result === '成功' ? 'text-green-600' : 'alarm'}">
+                            ${item.result}
+                        </td>
+                        <td class="border p-3">${item.remark || '-'}</td>
+                    </tr>
+                `;
+            });
+            elements.logsTableBody.innerHTML = html;
+        }
+
+        // 格式化日期时间
+        function formatDateTime(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        // 格式化文件名日期
+        function formatDateForFileName(dateString) {
+            return dateString.replace(/[-T:]/g, '');
+        }
+
+        // 绑定事件
+        function bindEvents() {
+            // 导航点击事件
+            elements.navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    switchPage(link.dataset.page);
+                });
+            });
+            
+            // 弹窗关闭
+            elements.closeModal.addEventListener('click', hideModal);
+            elements.modalConfirmBtn.addEventListener('click', hideModal);
+            
+            // 历史数据查询
+            elements.queryHistoryBtn.addEventListener('click', fetchHistoryData);
+            
+            // 导出Excel
+            elements.exportExcelBtn.addEventListener('click', exportExcel);
+            
+            // 报警控制
+            elements.startAlarmBtn.addEventListener('click', () => {
+                controlAlarm(elements.controlSensorId.value.trim(), 'start');
+            });
+            
+            elements.stopAlarmBtn.addEventListener('click', () => {
+                controlAlarm(elements.controlSensorId.value.trim(), 'stop');
+            });
+            
+            // 采样频率配置
+            elements.setFreqBtn.addEventListener('click', () => {
+                setSensorFreq(
+                    elements.freqSensorId.value.trim(),
+                    elements.sampleFreq.value
+                );
+            });
+            
+            // 日志查询
+            elements.queryLogsBtn.addEventListener('click', fetchLogs);
+            
+            // 窗口大小变化时调整图表大小
+            window.addEventListener('resize', () => {
+                if (historyChart) {
+                    historyChart.resize();
+                }
+            });
+        }
+
+        // 初始化应用
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
